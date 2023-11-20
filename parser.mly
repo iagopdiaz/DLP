@@ -13,6 +13,8 @@
 %token PRED
 %token ISZERO
 %token LET
+%token LETREC
+%token FIX
 %token IN
 %token BOOL
 %token NAT
@@ -46,6 +48,8 @@ term :
       { TmAbs ($2, $4, $6) }
   | LET IDV EQ term IN term
       { TmLetIn ($2, $4, $6) }
+  | LETREC IDV COLON ty EQ term IN term
+      { TmLetIn ($2, TmFix (TmAbs ($2, $4, $6)), $8)}
 
 appTerm :
     atomicTerm
@@ -56,6 +60,8 @@ appTerm :
       { TmPred $2 }
   | ISZERO atomicTerm
       { TmIsZero $2 }
+  | FIX atomicTerm
+      { TmFix ($2)}
   | appTerm atomicTerm
       { TmApp ($1, $2) }
 

@@ -17,6 +17,8 @@ rule token = parse
   | "pred"      { PRED }
   | "iszero"    { ISZERO }
   | "let"       { LET }
+  | "letrec"    { LETREC }
+  | "fix"       { FIX }
   | "in"        { IN }
   | "Bool"      { BOOL }
   | "Nat"       { NAT }
