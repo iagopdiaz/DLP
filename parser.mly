@@ -16,8 +16,10 @@
 %token LETREC
 %token FIX
 %token IN
+%token CONCAT
 %token BOOL
 %token NAT
+%token STRING
 
 %token LPAREN
 %token RPAREN
@@ -29,6 +31,7 @@
 
 %token <int> INTV
 %token <string> IDV
+%token <string> STRINGV
 
 %start s
 %type <Lambda.command> s
@@ -65,6 +68,8 @@ appTerm :
       { TmIsZero $2 }
   | FIX atomicTerm
       { TmFix $2}
+  | CONCAT atomicTerm atomicTerm
+      { TmConcat ($2, $3) }
   | appTerm atomicTerm
       { TmApp ($1, $2) }
 
@@ -82,6 +87,8 @@ atomicTerm :
             0 -> TmZero
           | n -> TmSucc (f (n-1))
         in f $1 }
+  | STRINGV
+      { TmString $1 }
 
 ty :
     atomicTy
@@ -96,4 +103,6 @@ atomicTy :
       { TyBool }
   | NAT
       { TyNat }
+  | STRING
+      { TyString }
 
