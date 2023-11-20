@@ -45,3 +45,29 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
             in aux n 0 1
             )
     in fib 10;;
+    
+    (*Factorial*)
+    let fact = 
+        lambda n : Nat.
+            (letrec factaux : Nat -> Nat -> Nat = lambda n : Nat. lambda acc : Nat.
+                if iszero (pred n) then acc
+                else (factaux (pred n) (
+                    letrec prod : Nat -> Nat -> Nat -> Nat = lambda p : Nat. lambda q : Nat. lambda k : Nat.
+                        if iszero p then 0
+                        else if iszero (pred p) then q
+                            else (prod (pred p) (letrec sum :  Nat -> Nat -> Nat = 
+                                    lambda i : Nat. lambda j : Nat.
+                                    if iszero i then j else succ(sum (pred i) j)
+                                in sum q k) k)
+                    in prod n acc acc))           
+            in factaux n 1)
+    in fact 5;;
+
+(* Context *)
+    y = 3;;
+    x = 6;;
+    succ y;;
+    (lambda n : Nat. pred n) x;;
+    letrec sum: Nat -> Nat -> Nat = 
+        lambda n : Nat. lambda m : Nat. if iszero n then m else succ(sum (pred n) m)
+    in sum x y;;

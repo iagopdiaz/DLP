@@ -7,7 +7,8 @@ type ty =
   | TyArr of ty * ty
 ;;
 
-type context =
+
+type tcontext =
   (string * ty) list
 ;;
 
@@ -26,22 +27,39 @@ type term =
   | TmFix of term
 ;;
 
+type command =
+    Eval of term
+  | Bind of string * term
+;;
 
+type vcontext =
+  (string * term) list
+;;
 (* CONTEXT MANAGEMENT *)
 
-let emptyctx =
+let emptytctx =
   []
 ;;
 
-let addbinding ctx x bind =
-  (x, bind) :: ctx
+let addtbinding tctx x bind =
+  (x, bind) :: tctx
 ;;
 
-let getbinding ctx x =
-  List.assoc x ctx
+let gettbinding tctx x =
+  List.assoc x tctx
 ;;
 
+let emptyvctx =
+  []
+;;
 
+let addvbinding vctx x bind =
+  (x, bind) :: vctx
+;;
+
+let getvbinding vctx x =
+  List.assoc x vctx
+;;
 (* TYPE MANAGEMENT (TYPING) *)
 
 let rec string_of_ty ty = match ty with
@@ -56,7 +74,7 @@ let rec string_of_ty ty = match ty with
 exception Type_error of string
 ;;
 
-let rec typeof ctx tm = match tm with
+let rec typeof tctx tm = match tm with
     (* T-True *)
     TmTrue ->
       TyBool
@@ -67,9 +85,9 @@ let rec typeof ctx tm = match tm with
 
     (* T-If *)
   | TmIf (t1, t2, t3) ->
-      if typeof ctx t1 = TyBool then
-        let tyT2 = typeof ctx t2 in
-        if typeof ctx t3 = tyT2 then tyT2
+      if typeof tctx t1 = TyBool then
+        let tyT2 = typeof tctx t2 in
+        if typeof tctx t3 = tyT2 then tyT2
         else raise (Type_error "arms of conditional have different types")
       else
         raise (Type_error "guard of conditional not a boolean")
@@ -80,34 +98,34 @@ let rec typeof ctx tm = match tm with
 
     (* T-Succ *)
   | TmSucc t1 ->
-      if typeof ctx t1 = TyNat then TyNat
+      if typeof tctx t1 = TyNat then TyNat
       else raise (Type_error "argument of succ is not a number")
 
     (* T-Pred *)
   | TmPred t1 ->
-      if typeof ctx t1 = TyNat then TyNat
+      if typeof tctx t1 = TyNat then TyNat
       else raise (Type_error "argument of pred is not a number")
 
     (* T-Iszero *)
   | TmIsZero t1 ->
-      if typeof ctx t1 = TyNat then TyBool
+      if typeof tctx t1 = TyNat then TyBool
       else raise (Type_error "argument of iszero is not a number")
 
     (* T-Var *)
   | TmVar x ->
-      (try getbinding ctx x with
+      (try gettbinding tctx x with
        _ -> raise (Type_error ("no binding type for variable " ^ x)))
 
     (* T-Abs *)
   | TmAbs (x, tyT1, t2) ->
-      let ctx' = addbinding ctx x tyT1 in
-      let tyT2 = typeof ctx' t2 in
+      let tctx' = addtbinding tctx x tyT1 in
+      let tyT2 = typeof tctx' t2 in
       TyArr (tyT1, tyT2)
 
     (* T-App *)
   | TmApp (t1, t2) ->
-      let tyT1 = typeof ctx t1 in
-      let tyT2 = typeof ctx t2 in
+      let tyT1 = typeof tctx t1 in
+      let tyT2 = typeof tctx t2 in
       (match tyT1 with
            TyArr (tyT11, tyT12) ->
              if tyT2 = tyT11 then tyT12
@@ -116,13 +134,13 @@ let rec typeof ctx tm = match tm with
 
     (* T-Let *)
   | TmLetIn (x, t1, t2) ->
-      let tyT1 = typeof ctx t1 in
-      let ctx' = addbinding ctx x tyT1 in
-      typeof ctx' t2
+      let tyT1 = typeof tctx t1 in
+      let tctx' = addtbinding tctx x tyT1 in
+      typeof tctx' t2
 
     (* T-Fix *)
   | TmFix t1 ->
-      let tyT1 = typeof ctx t1 in
+      let tyT1 = typeof tctx t1 in
       (match tyT1 with
           TyArr (tyT11, tyT12) ->
             if tyT11 = tyT12 then tyT12
@@ -262,7 +280,7 @@ let rec isval tm = match tm with
 exception NoRuleApplies
 ;;
 
-let rec eval1 tm = match tm with
+let rec eval1 vctx tm = match tm with
     (* E-IfTrue *)
     TmIf (TmTrue, t2, _) ->
       t2
@@ -273,12 +291,12 @@ let rec eval1 tm = match tm with
 
     (* E-If *)
   | TmIf (t1, t2, t3) ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmIf (t1', t2, t3)
 
     (* E-Succ *)
   | TmSucc t1 ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmSucc t1'
 
     (* E-PredZero *)
@@ -291,7 +309,7 @@ let rec eval1 tm = match tm with
 
     (* E-Pred *)
   | TmPred t1 ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmPred t1'
 
     (* E-IszeroZero *)
@@ -304,21 +322,21 @@ let rec eval1 tm = match tm with
 
     (* E-Iszero *)
   | TmIsZero t1 ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmIsZero t1'
 
     (* E-AppAbs *)
-  | TmApp (TmAbs(x, _, t12), v2) when isval v2 ->
-      subst x v2 t12
+  | TmApp (TmAbs(x, _, t2), v2) when isval v2 ->
+      subst x v2 t2
 
     (* E-App2: evaluate argument before applying function *)
   | TmApp (v1, t2) when isval v1 ->
-      let t2' = eval1 t2 in
+      let t2' = eval1 vctx t2 in
       TmApp (v1, t2')
 
     (* E-App1: evaluate function before argument *)
   | TmApp (t1, t2) ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmApp (t1', t2)
 
     (* E-LetV *)
@@ -327,7 +345,7 @@ let rec eval1 tm = match tm with
 
     (* E-Let *)
   | TmLetIn(x, t1, t2) ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmLetIn (x, t1', t2)
 
     (* E-FixBeta *)
@@ -336,18 +354,50 @@ let rec eval1 tm = match tm with
 
     (* E-Fix *)
   | TmFix t1 ->
-      let t1' = eval1 t1 in
+      let t1' = eval1 vctx t1 in
       TmFix t1'  
-      
+    (* E-Var *)
+  | TmVar str -> (* now when we evaluate a variable you may get it from the vcontext*)
+      getvbinding vctx str    
   | _ ->
       raise NoRuleApplies
 ;;
 
-let rec eval tm =
-  try
-    let tm' = eval1 tm in
-    eval tm'
-  with
-    NoRuleApplies -> tm
+(* Function for searching context*)
+let search_context vctx tm = 
+  let rec aux acum tm' = match tm' with
+        TmTrue -> TmTrue
+      | TmFalse -> TmFalse
+      | TmZero -> TmZero
+      | TmIf (t1, t2, t3) -> TmIf (aux acum t1, aux acum t2, aux acum t3)
+      | TmSucc t -> TmSucc (aux acum t)
+      | TmPred t -> TmPred (aux acum t)
+      | TmIsZero t -> TmIsZero (aux acum t)
+      | TmVar str -> if (List.mem str acum) then TmVar str (* if the string is a known value return it *)
+                     else getvbinding vctx str (* otherwise, try to find it in the vcontext *)
+      | TmAbs (str, ty, t) -> TmAbs (str, ty, aux (str::acum) t)
+      | TmApp (t1, t2) -> TmApp (aux acum t1, aux acum t2)
+      | TmLetIn (str, t1, t2) -> TmLetIn (str, aux acum t1, aux (str::acum) t2) (* adding it to its own "context" *)
+      | TmFix t -> TmFix (aux acum t)
+  in aux [] tm
 ;;
 
+let rec eval vctx tm =
+  try
+    let tm' = eval1 vctx tm in
+    eval vctx tm'
+  with
+    NoRuleApplies -> search_context vctx tm
+;;
+
+let rec execute (vctx, tctx) comm = match comm with
+    Eval tm -> let tyTm = typeof tctx tm in
+                  let tm' = eval vctx tm in
+                      print_endline (string_of_term tm' ^ " : " ^ string_of_ty tyTm);
+                      (vctx, tctx)
+
+  | Bind (str, tm) -> let tyTm = typeof tctx tm in
+                        let tm' = eval vctx tm in
+                          print_endline (str ^ " = " ^ string_of_term tm' ^ " : " ^ string_of_ty tyTm);
+                          (addvbinding vctx str tm', addtbinding tctx str tyTm)
+;;

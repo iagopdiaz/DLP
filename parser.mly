@@ -31,13 +31,15 @@
 %token <string> IDV
 
 %start s
-%type <Lambda.term> s
+%type <Lambda.command> s
 
 %%
 
 s :
-    term EOF
-      { $1 }
+    IDV EQ term EOF
+      { Bind ($1, $3) }
+  | term EOF
+      { Eval $1 }
 
 term :
     appTerm
@@ -51,6 +53,7 @@ term :
   | LETREC IDV COLON ty EQ term IN term
       { TmLetIn ($2, TmFix (TmAbs ($2, $4, $6)), $8)}
 
+
 appTerm :
     atomicTerm
       { $1 }
@@ -61,7 +64,7 @@ appTerm :
   | ISZERO atomicTerm
       { TmIsZero $2 }
   | FIX atomicTerm
-      { TmFix ($2)}
+      { TmFix $2}
   | appTerm atomicTerm
       { TmApp ($1, $2) }
 
