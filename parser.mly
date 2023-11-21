@@ -17,6 +17,7 @@
 %token FIX
 %token IN
 %token CONCAT
+%token LENGTH
 %token BOOL
 %token NAT
 %token STRING
@@ -70,6 +71,8 @@ appTerm :
       { TmFix $2}
   | CONCAT atomicTerm atomicTerm
       { TmConcat ($2, $3) }
+  | LENGTH atomicTerm
+      { TmLength $2}
   | appTerm atomicTerm
       { TmApp ($1, $2) }
 

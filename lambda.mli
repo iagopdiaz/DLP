@@ -26,6 +26,7 @@ type term =
   | TmFix of term
   | TmString of string
   | TmConcat of term * term
+  | TmLength of term
 ;;
 
 type vcontext =

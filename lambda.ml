@@ -28,6 +28,7 @@ type term =
   | TmFix of term
   | TmString of string
   | TmConcat of term * term
+  | TmLength of term
 ;;
 
 type command =
@@ -160,6 +161,11 @@ let rec typeof tctx tm = match tm with
   | TmConcat (t1, t2) ->
       if typeof tctx t1 = TyString && typeof tctx t2 = TyString then TyString
       else raise (Type_error "argument of concat is not a string")
+  
+    (* New rule for string *)
+  | TmLength t1 ->
+      if typeof tctx t1 = TyString then TyNat
+      else raise (Type_error "argument of length is not a string")
 ;;
 
 
@@ -200,6 +206,9 @@ let rec string_of_term = function
       "\"" ^ s ^ "\""
   | TmConcat (t1, t2) ->
       "concat " ^ "(" ^ string_of_term t1 ^ ")" ^ " " ^ "(" ^ string_of_term t2 ^ ")" 
+  | TmLength t ->
+      "(length " ^ string_of_term t ^ ")"
+
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -241,6 +250,8 @@ let rec free_vars tm = match tm with
       []
   | TmConcat (t1, t2) ->
       lunion (free_vars t1) (free_vars t2)
+  | TmLength t ->
+      free_vars t
 ;;
 
 let rec fresh_name x l =
@@ -286,6 +297,8 @@ let rec subst x s tm = match tm with
       TmString st
   | TmConcat (t1, t2) ->
       TmConcat (subst x s t1, subst x s t2)
+  | TmLength t ->
+      TmLength (subst x s t)
 ;;
 
 let rec isnumericval tm = match tm with
@@ -400,6 +413,19 @@ let rec eval1 vctx tm = match tm with
   | TmConcat (t1, t2) ->
       let t1' = eval1 vctx t1 in
       TmConcat (t1', t2)  
+    
+  | TmLength (TmString s1) ->
+    let length = String.length s1 in
+    let rec term_of_int n = (* Función auxiliar para convertir un entero en término *)
+      if n = 0 then
+        TmZero
+      else
+        TmSucc (term_of_int (n - 1))
+    in term_of_int length
+  
+  | TmLength t1 ->
+      let t1' = eval1 vctx t1 in
+      TmLength t1' 
 
   | _ ->
       raise NoRuleApplies
@@ -423,6 +449,7 @@ let search_context vctx tm =
       | TmLetIn (str, t1, t2) -> TmLetIn (str, aux acum t1, aux (str::acum) t2) (* adding it to its own "context" *)
       | TmFix t -> TmFix (aux acum t)
       | TmConcat (t1, t2) -> TmConcat (aux acum t1, aux acum t2)
+      | TmLength t -> TmLength (aux acum t)
   in aux [] tm
 ;;
 
