@@ -72,3 +72,14 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
     letrec sum: Nat -> Nat -> Nat = 
         lambda n : Nat. lambda m : Nat. if iszero n then m else succ(sum (pred n) m)
     in sum x y;;
+
+
+(* String *)
+
+(* Tuples *)
+x = 3;;
+tuple = {1,2,x,true};;
+tuple.1;;
+tuple.3;;
+t = {tuple, 2,3};;
+t.1.1;;
