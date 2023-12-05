@@ -4,6 +4,7 @@ type ty =
   | TyNat
   | TyArr of ty * ty
   | TyString
+  | TyTuple of ty list
 ;;
 
 
@@ -27,6 +28,8 @@ type term =
   | TmString of string
   | TmConcat of term * term
   | TmLength of term
+  | TmTuple of term list
+  | TmProj of term * string
 ;;
 
 type vcontext =
@@ -36,6 +39,7 @@ type vcontext =
 type command =
     Eval of term
   | Bind of string * term
+  | Bindty of string * ty
 ;;
 
 val emptytctx : tcontext;;

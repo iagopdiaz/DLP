@@ -24,7 +24,10 @@
 
 %token LPAREN
 %token RPAREN
+%token LKEY
+%token RKEY
 %token DOT
+%token COMMA
 %token EQ
 %token COLON
 %token ARROW
@@ -39,8 +42,10 @@
 
 %%
 
-s :
-    IDV EQ term EOF
+s : 
+    IDV EQ ty EOF
+      { Bindty ($1, $3)}
+  | IDV EQ term EOF
       { Bind ($1, $3) }
   | term EOF
       { Eval $1 }
@@ -56,8 +61,7 @@ term :
       { TmLetIn ($2, $4, $6) }
   | LETREC IDV COLON ty EQ term IN term
       { TmLetIn ($2, TmFix (TmAbs ($2, $4, $6)), $8)}
-
-
+      
 appTerm :
     atomicTerm
       { $1 }
@@ -67,14 +71,21 @@ appTerm :
       { TmPred $2 }
   | ISZERO atomicTerm
       { TmIsZero $2 }
-  | FIX atomicTerm
-      { TmFix $2}
   | CONCAT atomicTerm atomicTerm
       { TmConcat ($2, $3) }
   | LENGTH atomicTerm
       { TmLength $2}
   | appTerm atomicTerm
       { TmApp ($1, $2) }
+  | pathTerm  
+      { $1 }
+
+    
+pathTerm :
+   pathTerm DOT INTV 
+      { TmProj ($1, string_of_int $3) }
+  | atomicTerm
+      { $1 }
 
 atomicTerm :
     LPAREN term RPAREN
@@ -92,6 +103,14 @@ atomicTerm :
         in f $1 }
   | STRINGV
       { TmString $1 }
+  | LKEY tuple RKEY
+      { TmTuple $2}
+
+tuple : 
+  term 
+      {[$1]}
+  | term COMMA tuple
+      {$1 :: $3}
 
 ty :
     atomicTy
@@ -108,4 +127,11 @@ atomicTy :
       { TyNat }
   | STRING
       { TyString }
+  | LKEY tupleType RKEY
+      { TyTuple $2}
 
+tupleType : 
+    ty 
+      {[$1]}
+  | ty COMMA tupleType
+      {$1 :: $3}

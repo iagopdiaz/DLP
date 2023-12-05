@@ -6,6 +6,7 @@ type ty =
   | TyNat
   | TyArr of ty * ty
   | TyString
+  | TyTuple of ty list
 ;;
 
 
@@ -29,11 +30,14 @@ type term =
   | TmString of string
   | TmConcat of term * term
   | TmLength of term
+  | TmTuple of term list
+  | TmProj of term * string
 ;;
 
 type command =
     Eval of term
   | Bind of string * term
+  | Bindty of string * ty
 ;;
 
 type vcontext =
@@ -75,12 +79,17 @@ let rec string_of_ty ty = match ty with
       "(" ^ string_of_ty ty1 ^ ")" ^ " -> " ^ "(" ^ string_of_ty ty2 ^ ")"
   | TyString ->
       "String"
+  | TyTuple l ->
+    let f ty = string_of_ty ty ^ ", " in
+    let s = List.fold_left (^) "" (List.map f l) in
+    let s' = if s <> "" then String.sub s 0 (String.length s - 2) else "" in
+    "{" ^ s' ^ "}"
 ;;
 
 exception Type_error of string
 ;;
 
-let rec typeof tctx tm = match tm with
+let rec typeof tctx tm = match tm with      
     (* T-True *)
     TmTrue ->
       TyBool
@@ -166,6 +175,19 @@ let rec typeof tctx tm = match tm with
   | TmLength t1 ->
       if typeof tctx t1 = TyString then TyNat
       else raise (Type_error "argument of length is not a string")
+  
+    (* T-Tuple *)
+  | TmTuple fields -> 
+      TyTuple (List.map (fun t -> typeof tctx t) fields)
+
+    (* New rule for geting position *)
+  | TmProj (t, s) -> 
+      (match typeof tctx t with
+         TyTuple fieldtype -> 
+          (try List.nth fieldtype (int_of_string s - 1) with 
+            _ -> raise (Type_error ("label " ^ s ^ " not found")))
+        | _ -> raise(Type_error("tuple type expected"))) 
+
 ;;
 
 
@@ -208,7 +230,10 @@ let rec string_of_term = function
       "concat " ^ "(" ^ string_of_term t1 ^ ")" ^ " " ^ "(" ^ string_of_term t2 ^ ")" 
   | TmLength t ->
       "(length " ^ string_of_term t ^ ")"
-
+  | TmTuple terms -> 
+      "{" ^ String.concat ", " (List.map string_of_term terms) ^ "}"
+  | TmProj (t, proj) ->
+        string_of_term t ^ "." ^ proj
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -252,6 +277,10 @@ let rec free_vars tm = match tm with
       lunion (free_vars t1) (free_vars t2)
   | TmLength t ->
       free_vars t
+  | TmTuple fields -> 
+      List.fold_left (fun freev typ -> lunion (free_vars typ) freev) [] fields
+  | TmProj (t, _) ->
+        free_vars t
 ;;
 
 let rec fresh_name x l =
@@ -299,6 +328,10 @@ let rec subst x s tm = match tm with
       TmConcat (subst x s t1, subst x s t2)
   | TmLength t ->
       TmLength (subst x s t)
+  | TmTuple fields ->
+      TmTuple (List.map (fun typ -> subst x s typ) fields)
+  | TmProj (t, proj) ->
+      TmProj (subst x s t, proj)
 ;;
 
 let rec isnumericval tm = match tm with
@@ -313,6 +346,7 @@ let rec isval tm = match tm with
   | TmAbs _ -> true
   | TmString _ -> true
   | t when isnumericval t -> true
+  | TmTuple fields -> List.for_all (fun typ -> isval typ) fields
   | _ -> false
 ;;
 
@@ -426,9 +460,31 @@ let rec eval1 vctx tm = match tm with
   | TmLength t1 ->
       let t1' = eval1 vctx t1 in
       TmLength t1' 
+  (* E-Tuple *)
+  | TmTuple fields -> 
+      let rec evalafield = function
+        [] -> raise NoRuleApplies
+        | vi::rest when isval vi -> 
+          let rest' = evalafield rest in
+            vi::rest'
+        | ti::rest -> 
+          let ti' = eval1 vctx ti in 
+          ti'::rest
+      in let fields' = evalafield fields in 
+      TmTuple fields'
+  
+  (* E-Proj *)
+  | TmProj (TmTuple fields as v1, lb) when isval v1 -> 
+    (try List.nth fields (int_of_string lb - 1) with
+     _ -> raise NoRuleApplies)
+
+  | TmProj (t1, lb) -> 
+    let t1' = eval1 vctx t1 in 
+    TmProj (t1', lb)
 
   | _ ->
       raise NoRuleApplies
+
 ;;
 
 (* Function for searching context*)
@@ -450,6 +506,8 @@ let search_context vctx tm =
       | TmFix t -> TmFix (aux acum t)
       | TmConcat (t1, t2) -> TmConcat (aux acum t1, aux acum t2)
       | TmLength t -> TmLength (aux acum t)
+      | TmTuple terms -> TmTuple (List.map (aux acum) terms)
+      | TmProj (t, field) -> TmProj (aux acum t, field)
   in aux [] tm
 ;;
 
@@ -471,4 +529,8 @@ let rec execute (vctx, tctx) comm = match comm with
                         let tm' = eval vctx tm in
                           print_endline (str ^ " = " ^ string_of_term tm' ^ " : " ^ string_of_ty tyTm);
                           (addvbinding vctx str tm', addtbinding tctx str tyTm)
+
+  | Bindty (str, tm) -> let ty' = tm in                       (*change for ty' = eval vctx tm when value admits types*)
+                          print_endline (str ^ " : " ^ string_of_ty ty');
+                          (vctx, addtbinding tctx str ty')               (*change for addvbinding vctx str tm' when value context admits types*)
 ;;

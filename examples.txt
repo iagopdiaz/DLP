@@ -66,6 +66,7 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
 (* Context *)
     y = 3;;
     x = 6;;
+    id = lambda x : Bool. x
     succ y;;
     (lambda n : Nat. pred n) x;;
     letrec sum: Nat -> Nat -> Nat = 
