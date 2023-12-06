@@ -8,6 +8,7 @@ type ty =
   | TyString
   | TyTuple of ty list
   | TyRecord of (string * ty) list
+  | TyList of ty
 ;;
 
 
@@ -34,6 +35,11 @@ type term =
   | TmTuple of term list
   | TmProj of term * string
   | TmRecord of (string * term) list
+  | TmNil of ty
+  | TmCons of ty * term * term
+  | TmIsNil of ty * term
+  | TmHead of ty * term
+  | TmTail of ty * term
 ;;
 
 type command =
@@ -91,6 +97,8 @@ let rec string_of_ty ty = match ty with
     let s = List.fold_left (^) "" (List.map f l) in
     let s' = if s <> "" then String.sub s 0 (String.length s - 2) else "" in
     "{" ^ s' ^ "}"
+  | TyList ty ->
+      string_of_ty ty ^ "List"
 ;;
 
 exception Type_error of string
@@ -204,8 +212,31 @@ let rec typeof tctx tm = match tm with
     let f (s, t) = (s, typeof tctx t) in
       TyRecord (List.map f fields)
 
-;;
+    (* T-Nil *)
+  | TmNil ty -> TyList ty 
+      
+    (* T-Cons *)
+  | TmCons (ty, h, t) -> 
+    let tyTh = typeof tctx h in
+      let tyTt = typeof tctx t in
+        if (tyTh = ty) && (tyTt = TyList(ty)) then TyList(ty)
+        else raise (Type_error ("All the elements of the list must have the same type"))
 
+    (* T-IsNil *)
+  | TmIsNil (ty, t) -> 
+    if typeof tctx t = TyList(ty) then TyBool
+    else raise (Type_error ("IsNil argument must be a list"))
+
+    (* T-Head *)
+  | TmHead (ty, t) -> 
+    if typeof tctx t = TyList(ty) then ty
+    else raise (Type_error ("Head argument must be a list"))
+
+    (* T-Tail *)
+  | TmTail (ty, t) -> 
+    if typeof tctx t = TyList(ty) then TyList(ty)
+    else raise (Type_error ("Tail argument must be a list"))
+;;
 
 (* TERMS MANAGEMENT (EVALUATION) *)
 
@@ -255,6 +286,16 @@ let rec string_of_term = function
       let s = List.fold_left (^) "" (List.map f list) in
       let s' = if s <> "" then String.sub s 0 (String.length s - 2) else "" in
       "{ " ^ s' ^ " }"
+  | TmNil ty ->
+      "nil[" ^ string_of_ty ty ^ "]"
+  | TmCons (ty, h, t) ->
+      "cons[" ^ string_of_ty ty ^ "] " ^ "(" ^ string_of_term h ^ ") ^ (" ^ string_of_term t ^ ")"
+  | TmIsNil (ty, t) ->
+      "isnil[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
+  | TmHead (ty, t) ->
+      "head[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
+  | TmTail (ty, t) ->
+      "tail[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -305,6 +346,16 @@ let rec free_vars tm = match tm with
   | TmRecord fields ->
       let f (fv, ti) = free_vars ti in
       List.fold_left lunion [] (List.map f fields)
+  | TmNil ty ->
+      []
+  | TmCons (ty, t1, t2) ->
+      lunion (free_vars t1) (free_vars t2)
+  | TmIsNil (ty, t) ->
+      free_vars t
+  | TmHead (ty, t) ->
+      free_vars t
+  | TmTail (ty, t) ->
+      free_vars t
 ;;
 
 let rec fresh_name x l =
@@ -359,6 +410,16 @@ let rec subst x s tm = match tm with
   | TmRecord fields -> 
       let f (l1, t1) = (l1, subst x s t1) in
         TmRecord (List.map f fields)
+  | TmNil ty ->
+      tm
+  | TmCons (ty, t1, t2) ->
+      TmCons (ty, (subst x s t1), (subst x s t2))
+  | TmIsNil (ty, t) ->
+      TmIsNil (ty, (subst x s t))
+  | TmHead (ty, t) ->
+      TmHead (ty, (subst x s t))
+  | TmTail (ty, t) ->
+      TmTail (ty, (subst x s t))
 ;;
 
 let rec isnumericval tm = match tm with
@@ -377,6 +438,8 @@ let rec isval tm = match tm with
   | TmRecord fields ->
       let f (li, vi) = isval vi 
       in List.for_all f fields
+  | TmNil _ -> true
+  | TmCons (_, h, t) -> (&&) (isval h) (isval t)
   | _ -> false
 ;;
 
@@ -490,6 +553,7 @@ let rec eval1 vctx tm = match tm with
   | TmLength t1 ->
       let t1' = eval1 vctx t1 in
       TmLength t1' 
+
     (* E-Tuple *)
   | TmTuple fields -> 
       let rec evalafield = function
@@ -531,6 +595,39 @@ let rec eval1 vctx tm = match tm with
     let t1' = eval1 vctx t1 in 
     TmProj (t1', lb)
 
+    (* E-Cons *)
+  | TmCons(ty, h, t) when isval h ->
+      TmCons (ty, h, (eval1 vctx t))
+
+  | TmCons(ty, h, t) ->
+      TmCons (ty, (eval1 vctx h), t)
+
+
+    (* E-IsNil *)
+  | TmIsNil(ty, TmNil(_)) ->
+      TmTrue
+
+  | TmIsNil(ty, TmCons(_, _, _)) ->
+      TmFalse
+
+  | TmIsNil(ty, t) ->
+      TmIsNil (ty, (eval1 vctx t))
+
+
+    (* E-Head *)
+  | TmHead(ty, TmCons(_, h, _)) ->
+      h
+
+  | TmHead(ty, t) ->
+      TmHead (ty, (eval1 vctx t))
+
+    (* E-Tail *)
+  | TmTail(ty, TmCons(_, _, t)) ->
+      t
+
+  | TmTail(ty, t) ->
+      TmTail (ty, (eval1 vctx t))
+
   | _ ->
       raise NoRuleApplies
 
@@ -560,6 +657,12 @@ let search_context vctx tm =
       | TmRecord fields ->
           let processed_fields = List.map (fun (label, term) -> (label, aux acum term)) fields in
             TmRecord processed_fields
+
+      | TmNil ty -> TmNil ty
+      | TmCons (ty, t1, t2) -> TmCons (ty, aux acum t1, aux acum t2)
+      | TmIsNil (ty, t) -> TmIsNil (ty, aux acum t)
+      | TmHead (ty, t) -> TmHead (ty, aux acum t)
+      | TmTail (ty, t) -> TmTail (ty, aux acum t)
   in aux [] tm
 ;;
 

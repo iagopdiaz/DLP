@@ -25,6 +25,7 @@ rule token = parse
   | "Bool"      { BOOL }
   | "Nat"       { NAT }
   | "String"    { STRING }
+  | "list"      { LIST }
   | '('         { LPAREN }
   | ')'         { RPAREN }
   | '{'         { LKEY }
@@ -34,6 +35,13 @@ rule token = parse
   | '='         { EQ }
   | ':'         { COLON }
   | "->"        { ARROW }
+  | "nil"       { NIL }
+  | "cons"      { CONS }
+  | "["         { LSQUARE }
+  | "]"         { RSQUARE }
+  | "isnil"     { ISNIL }
+  | "head"      { HEAD }
+  | "tail"      { TAIL }
   | ['0'-'9']+  { INTV (int_of_string (Lexing.lexeme lexbuf)) }
   | ['a'-'z']['a'-'z' '_' '0'-'9']*
                 { IDV (Lexing.lexeme lexbuf) }

@@ -21,6 +21,7 @@
 %token BOOL
 %token NAT
 %token STRING
+%token LIST
 
 %token LPAREN
 %token RPAREN
@@ -32,6 +33,14 @@
 %token COLON
 %token ARROW
 %token EOF
+
+%token RSQUARE
+%token LSQUARE
+%token NIL
+%token CONS
+%token ISNIL
+%token HEAD
+%token TAIL
 
 %token <int> INTV
 %token <string> IDV
@@ -75,6 +84,16 @@ appTerm :
       { TmConcat ($2, $3) }
   | LENGTH atomicTerm
       { TmLength $2}
+  | NIL LSQUARE ty RSQUARE
+      { TmNil $3}
+  | CONS LSQUARE ty RSQUARE atomicTerm atomicTerm
+      { TmCons ($3, $5, $6) }
+  | ISNIL LSQUARE ty RSQUARE atomicTerm
+      { TmIsNil ($3, $5) }
+  | HEAD LSQUARE ty RSQUARE atomicTerm
+      { TmHead ($3, $5) }
+  | TAIL LSQUARE ty RSQUARE atomicTerm
+      { TmTail ($3, $5) }
   | appTerm atomicTerm
       { TmApp ($1, $2) }
   | pathTerm  
@@ -128,6 +147,8 @@ ty :
       { $1 }
   | atomicTy ARROW ty
       { TyArr ($1, $3) }
+  | atomicTy LIST
+      { TyList $1 }
 
 atomicTy :
     LPAREN ty RPAREN
