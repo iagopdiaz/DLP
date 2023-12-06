@@ -82,8 +82,10 @@ appTerm :
 
     
 pathTerm :
-   pathTerm DOT INTV 
+    pathTerm DOT INTV 
       { TmProj ($1, string_of_int $3) }
+  | pathTerm DOT IDV
+      { TmProj ($1, $3) }
   | atomicTerm
       { $1 }
 
@@ -105,12 +107,21 @@ atomicTerm :
       { TmString $1 }
   | LKEY tuple RKEY
       { TmTuple $2}
+  | LKEY record RKEY
+      { TmRecord $2}
 
 tuple : 
   term 
       {[$1]}
   | term COMMA tuple
       {$1 :: $3}
+
+record :
+    {[]}
+  | IDV EQ term
+    {[($1, $3)]}
+  | IDV EQ term COMMA record
+    {($1, $3) :: $5}
 
 ty :
     atomicTy
@@ -129,9 +140,18 @@ atomicTy :
       { TyString }
   | LKEY tupleType RKEY
       { TyTuple $2}
+  | LKEY recordType RKEY
+      { TyRecord $2}
 
 tupleType : 
     ty 
       {[$1]}
   | ty COMMA tupleType
       {$1 :: $3}
+
+recordType :
+    {[]}
+  | STRINGV EQ ty
+    {[($1, $3)]}
+  | STRINGV EQ ty COMMA recordType
+    {($1, $3) :: $5}

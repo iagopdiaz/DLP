@@ -5,6 +5,7 @@ type ty =
   | TyArr of ty * ty
   | TyString
   | TyTuple of ty list
+  | TyRecord of (string * ty) list
 ;;
 
 
@@ -30,6 +31,7 @@ type term =
   | TmLength of term
   | TmTuple of term list
   | TmProj of term * string
+  | TmRecord of (string * term) list
 ;;
 
 type vcontext =
