@@ -127,6 +127,21 @@ let search_tcontext tctx ty = match ty with
   | _ -> ty
 ;;
 
+let rec subtypeof tm1 tm2 = match (tm1, tm2) with
+  | (TyArr(s1, s2), TyArr(t1, t2)) -> ((subtypeof s1 t1) && (subtypeof t2 s2))
+  | (TyRecord(l1), TyRecord(l2)) ->
+    let check (x, ty) l =
+      try 
+        subtypeof ty (List.assoc x l)
+    with _ -> false
+    in let rec contains l1 l2 = match l1 with
+      | [] -> true
+      | (h::t) -> (&&) (check h l2) (contains t l2)
+      in contains l1 l2
+  | (tm1, tm2) -> tm1 = tm2
+;;
+
+
 let rec typeof tctx tm = match tm with      
     (* T-True *)
     TmTrue ->
@@ -182,7 +197,7 @@ let rec typeof tctx tm = match tm with
       let tyT2 = typeof tctx t2 in
       (match tyT1 with
            TyArr (tyT11, tyT12) ->
-             if tyT2 = tyT11 then tyT12
+             if subtypeof tyT11 tyT2 then tyT12
              else raise (Type_error ("parameter type mismatch " ^ string_of_ty tyT11 ^ " and " ^ string_of_ty tyT2))
          | _ -> raise (Type_error "arrow type expected"))
 

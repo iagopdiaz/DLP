@@ -87,6 +87,16 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
 
 (* String *)
 
+a = "testing strings";;
+b = "aaa";;
+c = concat a b;;
+concat a "";;
+length a;;
+length b;;
+length c;;
+length "";;
+
+
 (* Tuples *)
 x = 3;;
 tuple = {1,2,x,true};;
@@ -102,12 +112,11 @@ r.z;;
 r.z.w;;
 
 (* List *)
-(* NOTA: SON COPIADOS TAL CUAL PARA PROBAR LAS FUNCIONES, CUNDE CAMBIARLOS)
 
 nil[Nat];;
-cons[Nat] 10 (nil[Nat]);;
+cons[Nat] 5 (nil[Nat]);;
 empty_list = nil[Nat];;
-list1 = cons[Nat] 11 (cons[Nat] 77 (cons[Nat] 6 (nil[Nat])));;
+list1 = cons[Nat] 22 (cons[Nat] 9 (cons[Nat] 15 (nil[Nat])));;
 isnil[Nat] empty_list;;
 isnil[Nat] list1;;
 head[Nat] list1;;
@@ -118,7 +127,7 @@ in len;;
 len empty_list;;
 len list1;;
 
-list2 = cons[Nat] 32 (cons[Nat] 9 (cons[Nat] 16 (cons[Nat] 5 (nil[Nat]))));;
+list2 = cons[Nat] 12 (cons[Nat] 6 (cons[Nat] 11 (cons[Nat] 2 (nil[Nat]))));;
 
 
 
@@ -134,9 +143,9 @@ in append;;
 
 append list1 list2;;
 
-list_fib = cons[Nat] 4 (cons[Nat] 3 (cons[Nat] 10 (cons[Nat] 5 (nil[Nat]))));;
+list_fib = cons[Nat] 5 (cons[Nat] 2 (cons[Nat] 8 (cons[Nat] 6 (nil[Nat]))));;
 
-(* first define sum and fib *)
+
 func = lambda x:Nat. fib x;;
 
 map = letrec map : (Nat list) -> (Nat -> Nat) -> Nat list =
@@ -148,10 +157,24 @@ lambda lst: Nat list. lambda f: (Nat -> Nat).
 in map;;
 map list_fib func;;
 
-(*Variants*)
+(* Variants *)
 Int = <pos:Nat, zero:Nat, neg:Nat>;;
 
 p = <pos=3> as Int;;
 l = <tpos=3> as Int;;
 m = <pos=false> as Int;;
+
+
+(* Subtyping *)
+
+let idr = lambda r:{}. r in idr {x=0, y=1};;
+(lambda r:{x:Nat}. r.x) {x=0, y=1};;
+
+a = {x=1, y=1, z={x=1}};;
+b = {x=1, y=1, z=a};;
+(lambda r:{z:{x:Nat}}. (r.z).x) b;; 
+(lambda r:{z:{x:Nat}}. (r.z).x) a;;
+
+
+
 
