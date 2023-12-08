@@ -4,11 +4,13 @@
 type ty =
     TyBool
   | TyNat
+  | TyVar of string
   | TyArr of ty * ty
   | TyString
   | TyTuple of ty list
   | TyRecord of (string * ty) list
   | TyList of ty
+  | TyVariant of (string * ty) list
 ;;
 
 
@@ -40,10 +42,12 @@ type term =
   | TmIsNil of ty * term
   | TmHead of ty * term
   | TmTail of ty * term
+  | TmTagging of string * term * ty
 ;;
 
 type command =
     Eval of term
+  | EvalTy of ty
   | Bind of string * term
   | Bindty of string * ty
 ;;
@@ -76,6 +80,7 @@ let addvbinding vctx x bind =
 let getvbinding vctx x =
   List.assoc x vctx
 ;;
+
 (* TYPE MANAGEMENT (TYPING) *)
 
 let rec string_of_ty ty = match ty with
@@ -99,9 +104,27 @@ let rec string_of_ty ty = match ty with
     "{" ^ s' ^ "}"
   | TyList ty ->
       string_of_ty ty ^ "List"
+  | TyVar ty ->
+      ty
+  | TyVariant l -> 
+    let f (li, tyi) = li ^ " : " ^ string_of_ty tyi ^ ", " in
+    let s = List.fold_left (^) "" (List.map f l) in
+    let s' = if s <> "" then String.sub s 0 (String.length s - 2) else "" in
+    "<" ^ s' ^ ">"
 ;;
 
 exception Type_error of string
+;;
+
+(* Functions for searching context of types*)
+let search_typeVar tctx var = match List.assoc_opt var tctx with
+  | Some ty -> ty
+  | None -> raise (Type_error ("Type doesnt exist"))
+;;
+
+let search_tcontext tctx ty = match ty with
+  TyVar var-> search_typeVar tctx var
+  | _ -> ty
 ;;
 
 let rec typeof tctx tm = match tm with      
@@ -141,16 +164,17 @@ let rec typeof tctx tm = match tm with
       if typeof tctx t1 = TyNat then TyBool
       else raise (Type_error "argument of iszero is not a number")
 
-    (* T-Var *)
+    (* T-Var*)
   | TmVar x ->
       (try gettbinding tctx x with
        _ -> raise (Type_error ("no binding type for variable " ^ x)))
 
     (* T-Abs *)
   | TmAbs (x, tyT1, t2) ->
-      let tctx' = addtbinding tctx x tyT1 in
+      let varType = search_tcontext tctx tyT1 in
+      let tctx' = addtbinding tctx x varType in
       let tyT2 = typeof tctx' t2 in
-      TyArr (tyT1, tyT2)
+      TyArr (varType, tyT2)
 
     (* T-App *)
   | TmApp (t1, t2) ->
@@ -159,7 +183,7 @@ let rec typeof tctx tm = match tm with
       (match tyT1 with
            TyArr (tyT11, tyT12) ->
              if tyT2 = tyT11 then tyT12
-             else raise (Type_error "parameter type mismatch")
+             else raise (Type_error ("parameter type mismatch " ^ string_of_ty tyT11 ^ " and " ^ string_of_ty tyT2))
          | _ -> raise (Type_error "arrow type expected"))
 
     (* T-Let *)
@@ -200,7 +224,7 @@ let rec typeof tctx tm = match tm with
       (match typeof tctx t with
          TyTuple fieldtype -> 
           (try List.nth fieldtype (int_of_string s - 1) with 
-            _ -> raise (Type_error ("possition " ^ s ^ " not found")))
+            _ -> raise (Type_error ("position " ^ s ^ " not found")))
         | TyRecord fieldtys ->
           (try List.assoc s fieldtys with
             Not_found -> raise (Type_error ("label " ^ s ^ " not found")))
@@ -209,7 +233,7 @@ let rec typeof tctx tm = match tm with
           
     (* T-Record *)
   | TmRecord fields ->
-    let f (s, t) = (s, typeof tctx t) in
+      let f (s, t) = (s, typeof tctx t) in
       TyRecord (List.map f fields)
 
     (* T-Nil *)
@@ -224,78 +248,96 @@ let rec typeof tctx tm = match tm with
 
     (* T-IsNil *)
   | TmIsNil (ty, t) -> 
-    if typeof tctx t = TyList(ty) then TyBool
-    else raise (Type_error ("IsNil argument must be a list"))
+      if typeof tctx t = TyList(ty) then TyBool
+      else raise (Type_error ("IsNil argument must be a list"))
 
     (* T-Head *)
   | TmHead (ty, t) -> 
-    if typeof tctx t = TyList(ty) then ty
-    else raise (Type_error ("Head argument must be a list"))
+      if typeof tctx t = TyList(ty) then ty
+      else raise (Type_error ("Head argument must be a list"))
 
     (* T-Tail *)
   | TmTail (ty, t) -> 
-    if typeof tctx t = TyList(ty) then TyList(ty)
-    else raise (Type_error ("Tail argument must be a list"))
+      if typeof tctx t = TyList(ty) then TyList(ty)
+      else raise (Type_error ("Tail argument must be a list"))
+
+    (* T-Tagging *)
+  | TmTagging (lj, tj, ty)  -> 
+        let ty' = search_tcontext tctx ty in
+          let tyTh = typeof tctx tj in
+          match ty' with
+            TyVariant l ->
+              (match List.assoc_opt lj l with
+                | Some variantType -> 
+                    if variantType = tyTh then tyTh
+                    else raise (Type_error ("Parameter type mismatch " ^ string_of_ty tyTh ^ " and " ^ string_of_ty variantType))
+                | None -> raise (Type_error ("The label in variant doesnt exist")))
+            | _ -> raise (Type_error "Wrong type")
 ;;
 
 (* TERMS MANAGEMENT (EVALUATION) *)
 
-let rec string_of_term = function
+let rec string_of_term tctx tm = match tm with
     TmTrue ->
       "true"
   | TmFalse ->
       "false"
   | TmIf (t1,t2,t3) ->
-      "if " ^ "(" ^ string_of_term t1 ^ ")" ^
-      " then " ^ "(" ^ string_of_term t2 ^ ")" ^
-      " else " ^ "(" ^ string_of_term t3 ^ ")"
+      "if " ^ "(" ^ string_of_term tctx t1 ^ ")" ^
+      " then " ^ "(" ^ string_of_term tctx t2 ^ ")" ^
+      " else " ^ "(" ^ string_of_term tctx t3 ^ ")"
   | TmZero ->
       "0"
   | TmSucc t ->
      let rec f n t' = match t' with
           TmZero -> string_of_int n
         | TmSucc s -> f (n+1) s
-        | _ -> "succ " ^ "(" ^ string_of_term t ^ ")"
+        | _ -> "succ " ^ "(" ^ string_of_term tctx t ^ ")"
       in f 1 t
   | TmPred t ->
-      "pred " ^ "(" ^ string_of_term t ^ ")"
+      "pred " ^ "(" ^ string_of_term tctx t ^ ")"
   | TmIsZero t ->
-      "iszero " ^ "(" ^ string_of_term t ^ ")"
+      "iszero " ^ "(" ^ string_of_term tctx t ^ ")"
   | TmVar s ->
       s
   | TmAbs (s, tyS, t) ->
-      "(lambda " ^ s ^ ":" ^ string_of_ty tyS ^ ". " ^ string_of_term t ^ ")"
+      "(lambda " ^ s ^ ":" ^ string_of_ty tyS ^ ". " ^ string_of_term tctx t ^ ")"
   | TmApp (t1, t2) ->
-      "(" ^ string_of_term t1 ^ " " ^ string_of_term t2 ^ ")"
+      "(" ^ string_of_term tctx t1 ^ " " ^ string_of_term tctx t2 ^ ")"
   | TmLetIn (s, t1, t2) ->
-      "let " ^ s ^ " = " ^ string_of_term t1 ^ " in " ^ string_of_term t2
+      "let " ^ s ^ " = " ^ string_of_term tctx t1 ^ " in " ^ string_of_term tctx t2
   | TmFix t ->
-      "(fix " ^ string_of_term t ^ ")"
+      "(fix " ^ string_of_term tctx t ^ ")"
   | TmString s ->
       "\"" ^ s ^ "\""
   | TmConcat (t1, t2) ->
-      "concat " ^ "(" ^ string_of_term t1 ^ ")" ^ " " ^ "(" ^ string_of_term t2 ^ ")" 
+      "concat " ^ "(" ^ string_of_term tctx t1 ^ ")" ^ " " ^ "(" ^ string_of_term tctx t2 ^ ")" 
   | TmLength t ->
-      "(length " ^ string_of_term t ^ ")"
+      "(length " ^ string_of_term tctx t ^ ")"
   | TmTuple terms -> 
-      "{" ^ String.concat ", " (List.map string_of_term terms) ^ "}"
+      let f t = string_of_term tctx t ^ ","in
+      let s = List.fold_left (^) "" (List.map f terms) in
+      let s' = if s <> "" then String.sub s 0 (String.length s - 1) else "" in
+      "{ " ^ s' ^ " }"
   | TmProj (t, proj) ->
-        string_of_term t ^ "." ^ proj
+        string_of_term tctx t ^ "." ^ proj
   | TmRecord list ->
-      let f (li, ti) = li ^ " = " ^ string_of_term ti ^ ", " in
+      let f (li, ti) = li ^ " = " ^ string_of_term tctx ti ^ ", " in
       let s = List.fold_left (^) "" (List.map f list) in
       let s' = if s <> "" then String.sub s 0 (String.length s - 2) else "" in
       "{ " ^ s' ^ " }"
   | TmNil ty ->
       "nil[" ^ string_of_ty ty ^ "]"
   | TmCons (ty, h, t) ->
-      "cons[" ^ string_of_ty ty ^ "] " ^ "(" ^ string_of_term h ^ ") ^ (" ^ string_of_term t ^ ")"
+      "cons[" ^ string_of_ty ty ^ "] " ^ "(" ^ string_of_term tctx h ^ ") ^ (" ^ string_of_term tctx t ^ ")"
   | TmIsNil (ty, t) ->
-      "isnil[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
+      "isnil[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term tctx t ^ ")"
   | TmHead (ty, t) ->
-      "head[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
+      "head[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term tctx t ^ ")"
   | TmTail (ty, t) ->
-      "tail[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term t ^ ")"
+      "tail[" ^ string_of_ty ty ^ "]" ^ "(" ^ string_of_term tctx t ^ ")"
+  | TmTagging (l1,t1, ty) ->
+      "< " ^ string_of_ty (search_tcontext tctx ty) ^ " >" ^ " = < " ^ l1 ^ " = " ^ string_of_term tctx t1 ^ ">"
 ;;
 
 let rec ldif l1 l2 = match l1 with
@@ -356,6 +398,8 @@ let rec free_vars tm = match tm with
       free_vars t
   | TmTail (ty, t) ->
       free_vars t
+  | TmTagging (lj, tj, ty) ->
+      free_vars tj
 ;;
 
 let rec fresh_name x l =
@@ -420,6 +464,8 @@ let rec subst x s tm = match tm with
       TmHead (ty, (subst x s t))
   | TmTail (ty, t) ->
       TmTail (ty, (subst x s t))
+  | TmTagging (lj, tj, ty) ->
+      TmTagging (lj, subst x s tj, ty)
 ;;
 
 let rec isnumericval tm = match tm with
@@ -543,7 +589,7 @@ let rec eval1 vctx tm = match tm with
     
   | TmLength (TmString s1) ->
     let length = String.length s1 in
-    let rec term_of_int n = (* Función auxiliar para convertir un entero en término *)
+    let rec term_of_int n = (* Aux function for change and int for a term *)
       if n = 0 then
         TmZero
       else
@@ -628,64 +674,47 @@ let rec eval1 vctx tm = match tm with
   | TmTail(ty, t) ->
       TmTail (ty, (eval1 vctx t))
 
+    (* E-Tagging *)
+  | TmTagging (lj, t, ty) ->
+      let t' = eval1 vctx t in
+      TmTagging (lj, t', ty)
+
   | _ ->
       raise NoRuleApplies
 
 ;;
 
-(* Function for searching context*)
-let search_context vctx tm = 
-  let rec aux acum tm' = match tm' with
-        TmTrue -> TmTrue
-      | TmFalse -> TmFalse
-      | TmZero -> TmZero
-      | TmString s -> TmString s
-      | TmIf (t1, t2, t3) -> TmIf (aux acum t1, aux acum t2, aux acum t3)
-      | TmSucc t -> TmSucc (aux acum t)
-      | TmPred t -> TmPred (aux acum t)
-      | TmIsZero t -> TmIsZero (aux acum t)
-      | TmVar str -> if (List.mem str acum) then TmVar str (* if the string is a known value return it *)
-                     else getvbinding vctx str (* otherwise, try to find it in the vcontext *)
-      | TmAbs (str, ty, t) -> TmAbs (str, ty, aux (str::acum) t)
-      | TmApp (t1, t2) -> TmApp (aux acum t1, aux acum t2)
-      | TmLetIn (str, t1, t2) -> TmLetIn (str, aux acum t1, aux (str::acum) t2) (* adding it to its own "context" *)
-      | TmFix t -> TmFix (aux acum t)
-      | TmConcat (t1, t2) -> TmConcat (aux acum t1, aux acum t2)
-      | TmLength t -> TmLength (aux acum t)
-      | TmTuple terms -> TmTuple (List.map (aux acum) terms)
-      | TmProj (t, field) -> TmProj (aux acum t, field)
-      | TmRecord fields ->
-          let processed_fields = List.map (fun (label, term) -> (label, aux acum term)) fields in
-            TmRecord processed_fields
-
-      | TmNil ty -> TmNil ty
-      | TmCons (ty, t1, t2) -> TmCons (ty, aux acum t1, aux acum t2)
-      | TmIsNil (ty, t) -> TmIsNil (ty, aux acum t)
-      | TmHead (ty, t) -> TmHead (ty, aux acum t)
-      | TmTail (ty, t) -> TmTail (ty, aux acum t)
-  in aux [] tm
+(* Function for searching context of values*)
+let search_vcontext vctx tm = 
+  List.fold_left (fun t x -> subst x (getvbinding vctx x) t) tm (free_vars tm)
 ;;
 
-let rec eval vctx tm =
+let rec evalv vctx tm =
   try
     let tm' = eval1 vctx tm in
-    eval vctx tm'
+    evalv vctx tm'
   with
-    NoRuleApplies -> search_context vctx tm
+    NoRuleApplies -> search_vcontext vctx tm
 ;;
 
 let rec execute (vctx, tctx) comm = match comm with
     Eval tm -> let tyTm = typeof tctx tm in
-                  let tm' = eval vctx tm in
-                      print_endline (string_of_term tm' ^ " : " ^ string_of_ty tyTm);
+                let ty' = search_tcontext tctx tyTm in
+                  let tm' = evalv vctx tm in
+                      print_endline (string_of_term tctx tm' ^ " : " ^ string_of_ty ty');
+                      (vctx, tctx)
+  
+  | EvalTy ty -> let ty' = search_tcontext tctx ty in
+                      print_endline (string_of_ty ty ^ " : " ^ string_of_ty ty');
                       (vctx, tctx)
 
   | Bind (str, tm) -> let tyTm = typeof tctx tm in
-                        let tm' = eval vctx tm in
-                          print_endline (str ^ " = " ^ string_of_term tm' ^ " : " ^ string_of_ty tyTm);
-                          (addvbinding vctx str tm', addtbinding tctx str tyTm)
+                        let ty' = search_tcontext tctx tyTm in
+                          let tm' = evalv vctx tm in
+                            print_endline (str ^ " = " ^ string_of_term tctx tm' ^ " : " ^ string_of_ty ty');
+                            (addvbinding vctx str tm', addtbinding tctx str ty')
 
-  | Bindty (str, tm) -> let ty' = tm in                       (*change for ty' = eval vctx tm when value admits types*)
-                          print_endline (str ^ " : " ^ string_of_ty ty');
-                          (vctx, addtbinding tctx str ty')               (*change for addvbinding vctx str tm' when value context admits types*)
+  | Bindty (str, ty) -> let ty' = search_tcontext tctx ty in                       
+                          print_endline ("type " ^ str ^ " = " ^ string_of_ty ty');
+                          (vctx, addtbinding tctx str ty')              
 ;;

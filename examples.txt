@@ -11,7 +11,7 @@ iszero true
 if 1 then true else false
 if iszero 3 then 0 else false
 let id = Lx.x in id 3
-let id_bool = L x:Bool. x in id_bool true
+let id_bool = L x:X. x in id_bool true;;
 let id_nat = L x:Nat. x in id_nat 5
 let x = 5 in let id_nat = L x:Nat. x in id_nat x
 let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y)) in let sumaux = lambda f. (lambda n. (lambda m. if (iszero n) then m else succ (f (pred n) m))) in let sum = fix sumaux in sum 21 34
@@ -64,6 +64,7 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
     in fact 5;;
 
 (* Context *)
+    (*Vals*)
     y = 3;;
     x = 6;;
     id = lambda x : Bool. x
@@ -73,6 +74,16 @@ let fix = lambda f.(lambda x. f (lambda y. x x y)) (lambda x. f (lambda y. x x y
         lambda n : Nat. lambda m : Nat. if iszero n then m else succ(sum (pred n) m)
     in sum x y;;
 
+    (*Types*)
+    x = Nat;;
+    X = Nat;;
+    X;;
+    Y = X;;
+
+    X = Bool;;
+    let id_bool = L x:X. x in id_bool true;;
+    let id_bool = L x:Y. x in id_bool true;;
+    
 
 (* String *)
 
@@ -89,8 +100,6 @@ r = {x = 1, y = 2 , z = {w = 3, t = 4}};;
 r.x;;
 r.z;;
 r.z.w;;
-
-
 
 (* List *)
 (* NOTA: SON COPIADOS TAL CUAL PARA PROBAR LAS FUNCIONES, CUNDE CAMBIARLOS)
@@ -139,8 +148,10 @@ lambda lst: Nat list. lambda f: (Nat -> Nat).
 in map;;
 map list_fib func;;
 
+(*Variants*)
+Int = <pos:Nat, zero:Nat, neg:Nat>;;
 
-
-
-
+p = <pos=3> as Int;;
+l = <tpos=3> as Int;;
+m = <pos=false> as Int;;
 

@@ -20,6 +20,9 @@ rule token = parse
   | "letrec"    { LETREC }
   | "fix"       { FIX }
   | "in"        { IN }
+  | "as"        { AS }
+  | "case"      { CASE }
+  | "of"        { OF }
   | "concat"    { CONCAT }
   | "length"    { LENGTH }
   | "Bool"      { BOOL }
@@ -30,6 +33,8 @@ rule token = parse
   | ')'         { RPAREN }
   | '{'         { LKEY }
   | '}'         { RKEY }
+  | '<'         { LTHAN }
+  | '>'         { GTHAN }
   | '.'         { DOT }
   | ','         { COMMA }
   | '='         { EQ }
@@ -43,6 +48,8 @@ rule token = parse
   | "head"      { HEAD }
   | "tail"      { TAIL }
   | ['0'-'9']+  { INTV (int_of_string (Lexing.lexeme lexbuf)) }
+  | ['A'-'Z']['a'-'z' '_' '0'-'9']*
+                 { IDT (Lexing.lexeme lexbuf) }
   | ['a'-'z']['a'-'z' '_' '0'-'9']*
                 { IDV (Lexing.lexeme lexbuf) }
   | '"'[^ '"' ';' '\n']*'"'

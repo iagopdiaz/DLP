@@ -12,6 +12,9 @@ type token =
   | LETREC
   | FIX
   | IN
+  | CASE
+  | AS
+  | OF
   | CONCAT
   | LENGTH
   | BOOL
@@ -22,6 +25,8 @@ type token =
   | RPAREN
   | LKEY
   | RKEY
+  | LTHAN
+  | GTHAN
   | DOT
   | COMMA
   | EQ
@@ -35,21 +40,10 @@ type token =
   | ISNIL
   | HEAD
   | TAIL
-  | INTV of (
-# 45 "parser.mly"
-        int
-# 42 "parser.mli"
-)
-  | IDV of (
-# 46 "parser.mly"
-        string
-# 47 "parser.mli"
-)
-  | STRINGV of (
-# 47 "parser.mly"
-        string
-# 52 "parser.mli"
-)
+  | INTV of (int)
+  | IDT of (string)
+  | IDV of (string)
+  | STRINGV of (string)
 
 val s :
   (Lexing.lexbuf  -> token) -> Lexing.lexbuf -> Lambda.command

@@ -16,6 +16,9 @@
 %token LETREC
 %token FIX
 %token IN
+%token CASE
+%token AS
+%token OF
 %token CONCAT
 %token LENGTH
 %token BOOL
@@ -27,6 +30,8 @@
 %token RPAREN
 %token LKEY
 %token RKEY
+%token LTHAN
+%token GTHAN
 %token DOT
 %token COMMA
 %token EQ
@@ -43,6 +48,7 @@
 %token TAIL
 
 %token <int> INTV
+%token <string> IDT
 %token <string> IDV
 %token <string> STRINGV
 
@@ -52,13 +58,15 @@
 %%
 
 s : 
-    IDV EQ ty EOF
+    IDT EQ ty EOF
       { Bindty ($1, $3)}
   | IDV EQ term EOF
       { Bind ($1, $3) }
+  | ty EOF
+      { EvalTy $1 }
   | term EOF
       { Eval $1 }
-
+  
 term :
     appTerm
       { $1 }
@@ -96,14 +104,13 @@ appTerm :
       { TmTail ($3, $5) }
   | appTerm atomicTerm
       { TmApp ($1, $2) }
-  | pathTerm  
+  | projection  
       { $1 }
 
-    
-pathTerm :
-    pathTerm DOT INTV 
+projection :
+    projection DOT INTV 
       { TmProj ($1, string_of_int $3) }
-  | pathTerm DOT IDV
+  | projection DOT IDV
       { TmProj ($1, $3) }
   | atomicTerm
       { $1 }
@@ -125,10 +132,12 @@ atomicTerm :
   | STRINGV
       { TmString $1 }
   | LKEY tuple RKEY
-      { TmTuple $2}
+      { TmTuple $2 }
   | LKEY record RKEY
-      { TmRecord $2}
-
+      { TmRecord $2 }
+  | LTHAN IDV EQ term GTHAN AS ty
+      { TmTagging ($2, $4, $7)}
+  
 tuple : 
   term 
       {[$1]}
@@ -159,10 +168,14 @@ atomicTy :
       { TyNat }
   | STRING
       { TyString }
+  | IDT
+      { TyVar $1}
   | LKEY tupleType RKEY
-      { TyTuple $2}
+      { TyTuple $2 }
   | LKEY recordType RKEY
-      { TyRecord $2}
+      { TyRecord $2 }
+  | LTHAN variantType GTHAN
+      { TyVariant $2 }
 
 tupleType : 
     ty 
@@ -172,7 +185,13 @@ tupleType :
 
 recordType :
     {[]}
-  | STRINGV EQ ty
+  | IDV COLON ty
     {[($1, $3)]}
-  | STRINGV EQ ty COMMA recordType
+  | IDV COLON ty COMMA recordType
+    {($1, $3) :: $5}
+
+variantType : 
+    IDV COLON ty
+    {[($1, $3)]}
+  | IDV COLON ty COMMA variantType
     {($1, $3) :: $5}
